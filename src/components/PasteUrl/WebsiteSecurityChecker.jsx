@@ -7,30 +7,56 @@ export default function WebsiteSecurityChecker() {
     const [isAnalyzing, setIsAnalyzing] = useState(false);
 
     const suspiciousPatterns = [
-        { pattern: /[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}/, name: 'IP Address Instead of Domain', risk: 'high' },
-        { pattern: /[a-zA-Z0-9-]+\.(tk|ml|ga|cf)$/, name: 'Suspicious TLD', risk: 'medium' },
-        { pattern: /[a-zA-Z0-9-]+\.(bit|onion)$/, name: 'Dark Web/Tor Domain', risk: 'high' },
-        { pattern: /[0-9]{10,}/, name: 'Unusually Long Number Sequence', risk: 'medium' },
-        { pattern: /[a-zA-Z0-9-]{30,}/, name: 'Unusually Long Domain Name', risk: 'medium' },
-        { pattern: /[^a-zA-Z0-9.-]/, name: 'Special Characters in Domain', risk: 'high' },
-        { pattern: /^https?:\/\/[^\/]*[a-zA-Z0-9-]+\.(com|org|net|edu|gov)-[a-zA-Z0-9-]+/, name: 'Suspicious Subdomain Pattern', risk: 'high' },
-        { pattern: /paypal|amazon|google|microsoft|apple|facebook|twitter|instagram|linkedin|github/i, name: 'Potential Brand Impersonation', risk: 'high' },
-        { pattern: /secure|login|verify|update|confirm|account/i, name: 'Phishing Keywords', risk: 'medium' },
-        { pattern: /[0-9]+\.[a-z]{2,}\/[a-zA-Z0-9]{20,}/, name: 'Suspicious URL Structure', risk: 'medium' }
-    ];
+  { pattern: /^(http[s]?:\/\/)?(\d{1,3}\.){3}\d{1,3}$/, name: 'Direct IP Address Access', risk: 'high' },
+  { pattern: /\.(tk|ml|ga|cf|gq|xyz|pw|top|click|fit|review|space|tech)$/, name: 'Suspicious TLD', risk: 'medium' },
+  { pattern: /\.(onion|bit)$/, name: 'Darknet / Onion domain', risk: 'high' },
+  { pattern: /[0-9]{10,}/, name: 'Unusually Long Number Sequence', risk: 'medium' },
+  { pattern: /[a-zA-Z0-9-]{30,}/, name: 'Unusually Long Domain Name', risk: 'medium' },
+  { pattern: /^([^.]+\.){4,}/, name: 'Excessive Subdomains', risk: 'medium' },
+  { pattern: /[^a-zA-Z0-9.-]/, name: 'Special Characters in Domain', risk: 'high' },
+  { pattern: /(?:^|[-.])(paypal|amazon|apple|microsoft|facebook|twitter|linkedin|github)(?:[-.]|$)/i, name: 'Brand Impersonation Pattern', risk: 'high' },
+  { pattern: /secure|login|verify|update|confirm|account/i, name: 'Phishing Keywords', risk: 'medium' },
+  { pattern: /crypto|bit|wallet|blockchain/i, name: 'Crypto Keyword in Domain', risk: 'medium' }
+];
+
 
     const checkSSLCertificate = async (hostname) => {
         try {
+            // Add timeout and better error handling
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
             const response = await fetch('https://webscarping-x2tm.onrender.com/api/check-ssl', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
                 body: JSON.stringify({ hostname }),
+                signal: controller.signal
             });
+
+            clearTimeout(timeoutId);
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+
             const data = await response.json();
             return data;
         } catch (error) {
             console.error('SSL Check API error:', error);
-            return { error: 'Could not connect to SSL analysis service.' };
+            
+            // Provide more specific error messages
+            if (error.name === 'AbortError') {
+                return { error: 'SSL analysis request timed out. Please try again.' };
+            } else if (error.message.includes('Failed to fetch')) {
+                return { error: 'Unable to connect to SSL analysis service. The service may be temporarily unavailable.' };
+            } else if (error.message.includes('HTTP')) {
+                return { error: `SSL analysis service error: ${error.message}` };
+            } else {
+                return { error: 'SSL analysis temporarily unavailable. Local analysis completed.' };
+            }
         }
     };
 
@@ -52,7 +78,8 @@ export default function WebsiteSecurityChecker() {
                     
                     // Check for trusted issuers
                     const issuer = sslResults.certificate.issuer?.toLowerCase() || '';
-                    const trustedIssuers = ['digicert', 'let\'s encrypt', 'globalsign', 'sectigo', 'comodo'];
+                   const trustedIssuers = ['digicert', 'let\'s encrypt', 'globalsign', 'sectigo', 'comodo', 'google trust'];
+;
                     
                     if (trustedIssuers.some(trusted => issuer.includes(trusted))) {
                         localResults.riskScore = Math.max(0, localResults.riskScore - 2);
@@ -70,6 +97,7 @@ export default function WebsiteSecurityChecker() {
                 }
 
                 // Add Google Safe Browsing results
+
                 if (sslResults.google_safe_browsing?.safe === false) {
                     localResults.riskScore += 8;
                     localResults.checks.push({
@@ -81,28 +109,50 @@ export default function WebsiteSecurityChecker() {
                 }
                 
                 // Recalculate risk level based on updated score
-                if (localResults.riskScore >= 8) localResults.riskLevel = 'high';
-                else if (localResults.riskScore >= 4) localResults.riskLevel = 'medium';
-                else localResults.riskLevel = 'low';
+               if (localResults.riskScore >= 6) localResults.riskLevel = 'high';
+               else if (localResults.riskScore >= 32) localResults.riskLevel = 'medium';
+               else localResults.riskLevel = 'low';
 
                 localResults.ssl = {
-                    valid: sslResults.certificate.valid,
-                    issuer: sslResults.certificate.issuer,
-                    common_name: sslResults.certificate.common_name,
-                    valid_from: sslResults.certificate.valid_from,
-                    valid_until: sslResults.certificate.valid_until,
-                    feedback: sslResults.feedback,
-                    risk_level: sslResults.risk_level
+                    valid: sslResults.certificate?.valid || false,
+                    issuer: sslResults.certificate?.issuer || 'Unknown',
+                    common_name: sslResults.certificate?.common_name || 'Unknown',
+                    valid_from: sslResults.certificate?.valid_from || 'Unknown',
+                    valid_until: sslResults.certificate?.valid_until || 'Unknown',
+                    feedback: sslResults.feedback || 'No additional feedback available',
+                    risk_level: sslResults.risk_level || 'Unknown'
                 };
 
-                localResults.googleSafeBrowsing = sslResults.google_safe_browsing;
+                localResults.googleSafeBrowsing = sslResults.google_safe_browsing || { safe: null, error: 'Check unavailable' };
 
             } else {
                 localResults.ssl = { error: sslResults.error };
+                // Add a note that local analysis was completed
+                localResults.checks.push({
+                    type: 'SSL Analysis Unavailable',
+                    message: 'External SSL verification service is temporarily unavailable. Local analysis completed.',
+                    risk: 'low',
+                    severity: 0
+                });
             }
 
         } catch (err) {
-            localResults.ssl = { error: 'Failed to analyze SSL certificate' };
+    console.error('Analysis error:', err);
+    localResults.ssl = {
+        error: 'Failed to analyze SSL certificate - service may be unavailable'
+    };
+
+    // Push a real penalty for the SSL failure
+    localResults.checks.push({
+        type: 'SSL Analysis Error',
+        message: 'Unable to verify SSL certificate. Domain may be insecure or malicious.',
+        risk: 'medium',
+        severity: 3
+    });
+
+    localResults.riskScore += 3;
+
+
         }
 
         setResults(localResults);
@@ -110,103 +160,117 @@ export default function WebsiteSecurityChecker() {
     };
 
     const performAnalysis = (inputUrl) => {
-        const analysis = {
-            url: inputUrl,
-            timestamp: new Date().toLocaleString(),
-            riskLevel: 'low',
-            riskScore: 0,
-            checks: [],
-            recommendations: []
-        };
+  const analysis = {
+    url: inputUrl,
+    timestamp: new Date().toLocaleString(),
+    riskLevel: 'low',
+    riskScore: 0,
+    checks: [],
+    recommendations: []
+  };
 
-        let riskScore = 0;
-        const detectedIssues = [];
+  let riskScore = 0;
+  const detectedIssues = [];
 
-        if (!inputUrl.startsWith('https://')) {
-            detectedIssues.push({
-                type: 'No HTTPS',
-                message: 'Website does not use secure HTTPS protocol',
-                risk: 'medium',
-                severity: 3
-            });
-            riskScore += 3;
-        }
+  // Ensure protocol + domain parsed properly
+  let domain = '';
+  let parsedUrl;
 
-        let domain = '';
-        try {
-            const urlObj = new URL(inputUrl.startsWith('http') ? inputUrl : 'https://' + inputUrl);
-            domain = urlObj.hostname;
-        } catch (e) {
-            detectedIssues.push({
-                type: 'Invalid URL',
-                message: 'URL format is invalid or malformed',
-                risk: 'high',
-                severity: 5
-            });
-            riskScore += 5;
-        }
+  try {
+    parsedUrl = new URL(inputUrl.startsWith('http') ? inputUrl : 'https://' + inputUrl);
+    domain = parsedUrl.hostname;
+  } catch (e) {
+    detectedIssues.push({
+      type: 'Invalid URL',
+      message: 'URL format is invalid or malformed',
+      risk: 'high',
+      severity: 5
+    });
+    riskScore += 5;
+    analysis.riskScore = riskScore;
+    analysis.riskLevel = 'high';
+    analysis.checks = detectedIssues;
+    return analysis;
+  }
 
-        suspiciousPatterns.forEach(({ pattern, name, risk }) => {
-            if (pattern.test(inputUrl) || pattern.test(domain)) {
-                const severity = risk === 'high' ? 4 : risk === 'medium' ? 2 : 1;
-                detectedIssues.push({
-                    type: name,
-                    message: `Detected: ${name}`,
-                    risk,
-                    severity
-                });
-                riskScore += severity;
-            }
-        });
+  // 🔐 HTTPS check (now uses resolved protocol)
+  if (parsedUrl.protocol !== 'https:') {
+    detectedIssues.push({
+      type: 'No HTTPS',
+      message: 'Website does not use secure HTTPS protocol',
+      risk: 'medium',
+      severity: 3
+    });
+    riskScore += 3;
+  }
 
-        if (domain.split('.').length > 4) {
-            detectedIssues.push({
-                type: 'Multiple Subdomains',
-                message: 'Excessive subdomain levels detected',
-                risk: 'medium',
-                severity: 2
-            });
-            riskScore += 2;
-        }
+  // 🧠 Suspicious patterns
+  const suspiciousPatterns = [
+    { pattern: /^[0-9.]+$/, name: 'IP Address Instead of Domain', risk: 'high' },
+    { pattern: /\.tk$|\.ml$|\.ga$|\.cf$|\.gq$/, name: 'Free or Abused TLD', risk: 'medium' },
+    { pattern: /[0-9]{3,}/, name: 'Numeric Pattern in Domain', risk: 'medium' },
+    { pattern: /(login|secure|update|account|verify|signin)/i, name: 'Suspicious Keywords', risk: 'medium' },
+    { pattern: /-(paypal|apple|amazon|google|bank|wallet)/i, name: 'Brand Impersonation Pattern', risk: 'high' },
+    { pattern: /\b(bit\.ly|tinyurl\.com|t\.co|goo\.gl|ow\.ly|short\.link)\b/, name: 'URL Shortener', risk: 'medium' }
+  ];
 
-        if (inputUrl.length > 100) {
-            detectedIssues.push({
-                type: 'Long URL',
-                message: 'URL is unusually long',
-                risk: 'medium',
-                severity: 2
-            });
-            riskScore += 2;
-        }
+  suspiciousPatterns.forEach(({ pattern, name, risk }) => {
+    if (pattern.test(domain)) {
+      const severity = risk === 'high' ? 4 : risk === 'medium' ? 2 : 1;
+      detectedIssues.push({ type: 'Pattern Match', message: `Detected: ${name}`, risk, severity });
+      riskScore += severity;
+    }
+  });
 
-        const shorteners = ['bit.ly', 'tinyurl.com', 't.co', 'goo.gl', 'ow.ly', 'short.link'];
-        if (shorteners.some(shortener => domain.includes(shortener))) {
-            detectedIssues.push({
-                type: 'URL Shortener',
-                message: 'Uses URL shortening service',
-                risk: 'medium',
-                severity: 2
-            });
-            riskScore += 2;
-        }
+  // 🧠 Subdomain depth
+  if (domain.split('.').length > 4) {
+    detectedIssues.push({
+      type: 'Excessive Subdomains',
+      message: 'Suspicious subdomain structure detected',
+      risk: 'medium',
+      severity: 2
+    });
+    riskScore += 2;
+  }
 
-        if (riskScore >= 8) analysis.riskLevel = 'high';
-        else if (riskScore >= 4) analysis.riskLevel = 'medium';
-        else analysis.riskLevel = 'low';
+  // 🧠 Excessive length
+  if (inputUrl.length > 100) {
+    detectedIssues.push({
+      type: 'Long URL',
+      message: 'URL is unusually long',
+      risk: 'low',
+      severity: 1
+    });
+    riskScore += 1;
+  }
 
-        analysis.riskScore = riskScore;
-        analysis.checks = detectedIssues;
+  // 🧠 Whitelist check (no penalty)
+  const whitelistedDomains = ['google.com', 'www.google.com', 'microsoft.com', 'apple.com'];
+  if (whitelistedDomains.includes(domain)) {
+    riskScore = 0;
+    detectedIssues.length = 0;
+    analysis.recommendations.push('URL is verified and commonly trusted.');
+  }
 
-        if (detectedIssues.length === 0) {
-            analysis.recommendations.push('URL appears to be safe based on initial analysis');
-        } else {
-            analysis.recommendations.push('Exercise caution when visiting this website');
-            analysis.recommendations.push("Verify the website's legitimacy through official channels");
-            analysis.recommendations.push('Do not enter sensitive information unless verified');
-        }
+  // Final risk level
+  if (riskScore >= 7) analysis.riskLevel = 'high';
+  else if (riskScore >= 3) analysis.riskLevel = 'medium';
+  else analysis.riskLevel = 'low';
 
-        return analysis;
-    };
+  analysis.riskScore = riskScore;
+  analysis.checks = detectedIssues;
+
+  if (detectedIssues.length === 0) {
+    analysis.recommendations.push('URL appears safe based on initial checks.');
+  } else {
+    analysis.recommendations.push('Exercise caution when visiting this website.');
+    analysis.recommendations.push('Verify the website’s legitimacy through official sources.');
+    analysis.recommendations.push('Do not enter sensitive info unless verified.');
+  }
+
+  return analysis;
+};
+
 
     const getRiskColor = (risk) => {
         switch (risk) {
@@ -324,8 +388,8 @@ export default function WebsiteSecurityChecker() {
                                         </div>
                                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                                             <div className="bg-white/10 p-4 rounded-xl">
-                                                <div className="text-sm opacity-75">URL</div>
-                                                <div className="font-medium truncate">{results.url}</div>
+                                            <div className="text-sm opacity-75">URL</div>
+                                            <div className="font-medium break-all">{results.url}</div>
                                             </div>
                                             <div className="bg-white/10 p-4 rounded-xl">
                                                 <div className="text-sm opacity-75">Risk Score</div>
@@ -343,6 +407,35 @@ export default function WebsiteSecurityChecker() {
                                     </div>
 
                                     {/* Google Safe Browsing Results */}
+                                    {/* Additional URL Info */}
+                                    <div className="backdrop-blur-sm bg-white/5 border border-white/20 p-6 rounded-2xl">
+                                     <h3 className="text-2xl font-bold mb-6 flex items-center text-white">
+        <div className="w-8 h-8 bg-gradient-to-br from-cyan-500 to-blue-500 rounded-lg flex items-center justify-center mr-3">
+            <Globe className="w-4 h-4 text-white" />
+        </div>
+        URL Analysis Details
+    </h3>
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="bg-white/10 p-4 rounded-xl">
+            <div className="text-sm opacity-75">Protocol</div>
+            <div className="font-medium">{results.url.startsWith('https://') ? 'HTTPS ✓' : 'HTTP ⚠️'}</div>
+        </div>
+        <div className="bg-white/10 p-4 rounded-xl">
+            <div className="text-sm opacity-75">Domain</div>
+            <div className="font-medium break-all">{(() => {
+                try {
+                    return new URL(results.url.startsWith('http') ? results.url : 'https://' + results.url).hostname;
+                } catch (e) {
+                    return 'Invalid URL';
+                }
+            })()}</div>
+        </div>
+        <div className="bg-white/10 p-4 rounded-xl">
+            <div className="text-sm opacity-75">URL Length</div>
+            <div className="font-medium">{results.url.length} characters</div>
+        </div>
+    </div>
+    </div>
                                     {results.googleSafeBrowsing && (
                                         <div className="backdrop-blur-sm bg-white/5 border border-white/20 p-6 rounded-2xl">
                                             <h3 className="text-2xl font-bold mb-6 flex items-center text-white">
@@ -398,12 +491,13 @@ export default function WebsiteSecurityChecker() {
                                             </h3>
                                             
                                             {results.ssl.error ? (
-                                                <div className="bg-red-500/20 border border-red-500/30 p-4 rounded-xl">
-                                                    <div className="flex items-center text-red-300">
-                                                        <XCircle className="w-5 h-5 mr-3" />
-                                                        <span className="font-medium">SSL Analysis Failed:</span>
+                                                <div className="bg-orange-500/20 border border-orange-500/30 p-4 rounded-xl">
+                                                    <div className="flex items-center text-orange-300">
+                                                        <AlertTriangle className="w-5 h-5 mr-3" />
+                                                        <span className="font-medium">SSL Analysis Notice:</span>
                                                     </div>
-                                                    <p className="text-red-200 mt-2">{results.ssl.error}</p>
+                                                    <p className="text-orange-200 mt-2">{results.ssl.error}</p>
+                                                    <p className="text-orange-200 mt-2 text-sm">Local security analysis has been completed successfully.</p>
                                                 </div>
                                             ) : (
                                                 <div className="space-y-4">
@@ -420,7 +514,7 @@ export default function WebsiteSecurityChecker() {
                                                                     Certificate {results.ssl.valid ? 'Valid' : 'Invalid'}
                                                                 </span>
                                                             </div>
-                                                            {results.ssl.risk_level && (
+                                                            {results.ssl.risk_level && results.ssl.risk_level !== 'Unknown' && (
                                                                 <div className={`px-3 py-1 rounded-full text-xs font-bold uppercase ${getRiskColor(results.ssl.risk_level.toLowerCase().replace(' risk', ''))}`}>
                                                                     {results.ssl.risk_level}
                                                                 </div>
@@ -428,14 +522,14 @@ export default function WebsiteSecurityChecker() {
                                                         </div>
                                                         
                                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                            <div className="bg-white/10 p-3 rounded-lg">
-                                                                <div className="text-sm opacity-75">Issuer</div>
-                                                                <div className="font-medium">{results.ssl.issuer}</div>
-                                                            </div>
-                                                            <div className="bg-white/10 p-3 rounded-lg">
-                                                                <div className="text-sm opacity-75">Common Name</div>
-                                                                <div className="font-medium">{results.ssl.common_name}</div>
-                                                            </div>
+                                                           <div className="bg-white/10 p-3 rounded-lg">
+    <div className="text-sm opacity-75">Issuer</div>
+    <div className="font-medium break-all">{results.ssl.issuer}</div>
+</div>
+<div className="bg-white/10 p-3 rounded-lg">
+    <div className="text-sm opacity-75">Common Name</div>
+    <div className="font-medium break-all">{results.ssl.common_name}</div>
+</div>
                                                             <div className="bg-white/10 p-3 rounded-lg">
                                                                 <div className="text-sm opacity-75">Valid From</div>
                                                                 <div className="font-medium">{results.ssl.valid_from}</div>
@@ -448,7 +542,7 @@ export default function WebsiteSecurityChecker() {
                                                     </div>
 
                                                     {/* AI Feedback */}
-                                                    {results.ssl.feedback && (
+                                                    {results.ssl.feedback && results.ssl.feedback !== 'No additional feedback available' && (
                                                         <div className="bg-gradient-to-r from-purple-500/20 to-blue-500/20 border border-purple-500/30 p-4 rounded-xl">
                                                             <div className="flex items-center mb-3">
                                                                 <div className="w-8 h-8 bg-gradient-to-r from-purple-500 to-blue-500 rounded-lg flex items-center justify-center mr-3">
@@ -501,46 +595,73 @@ export default function WebsiteSecurityChecker() {
                                             <div className="flex items-center text-green-300">
                                                 <div className="w-12 h-12 bg-green-500/30 rounded-xl flex items-center justify-center mr-4">
                                                     <CheckCircle className="w-6 h-6" />
-                                                </div>
-                                                <div>
-                                                    <h3 className="text-xl font-bold">No Security Issues Detected</h3>
-                                                    <p className="text-green-200 mt-1">
-                                                        The URL appears to be safe based on our comprehensive security analysis.
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )}
+                                                    </div>
+                                <div>
+                                    <h3 className="text-2xl font-bold">No Security Issues Detected</h3>
+                                    <p className="text-sm opacity-75 mt-2">The URL appears to be safe based on our analysis</p>
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
-                                    {/* Security Recommendations */}
-                                    <div className="backdrop-blur-sm bg-white/5 border border-white/20 p-6 rounded-2xl">
-                                        <h3 className="text-2xl font-bold mb-6 flex items-center text-white">
-                                            <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-blue-500 rounded-lg flex items-center justify-center mr-3">
-                                                <Lock className="w-4 h-4 text-white" />
-                                            </div>
-                                            Security Recommendations
-                                        </h3>
-                                        <div className="space-y-3">
-                                            {results.recommendations.map((rec, index) => (
-                                                <div key={index} className="flex items-start bg-white/5 p-4 rounded-xl">
-                                                    <div className="w-2 h-2 bg-gradient-to-r from-orange-500 to-green-500 rounded-full mt-2 mr-4 flex-shrink-0"></div>
-                                                    <span className="text-gray-300">{rec}</span>
-                                                </div>
-                                            ))}
+                    {/* Recommendations */}
+                    {results.recommendations.length > 0 && (
+                        <div className="backdrop-blur-sm bg-white/5 border border-white/20 p-6 rounded-2xl">
+                            <h3 className="text-2xl font-bold mb-6 flex items-center text-white">
+                                <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-lg flex items-center justify-center mr-3">
+                                    <AlertCircle className="w-4 h-4 text-white" />
+                                </div>
+                                Security Recommendations
+                            </h3>
+                            <div className="space-y-3">
+                                {results.recommendations.map((rec, index) => (
+                                    <div key={index} className="flex items-start bg-white/10 p-4 rounded-xl">
+                                        <div className="w-6 h-6 bg-blue-500/30 rounded-full flex items-center justify-center mr-3 flex-shrink-0 mt-0.5">
+                                            <span className="text-blue-300 text-sm font-bold">{index + 1}</span>
                                         </div>
+                                        <span className="text-gray-300">{rec}</span>
                                     </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
 
-                                    {/* Disclaimer */}
-                                    <div className="backdrop-blur-sm bg-white/5 border border-white/20 p-6 rounded-2xl">
-                                        <div className="flex items-start">
-                                            <AlertTriangle className="w-6 h-6 text-yellow-400 mr-4 flex-shrink-0" />
-                            <div>
-                                <h4 className="font-semibold text-yellow-300 mb-2">Security Analysis Disclaimer</h4>
-                                <p className="text-gray-400 text-sm leading-relaxed">
-                                    This security analysis provides automated threat detection based on URL patterns, SSL certificates, and external security databases. 
-                                    While comprehensive, it should not be considered a substitute for professional security assessment. 
-                                    Always exercise caution when visiting unfamiliar websites and avoid entering sensitive information unless you're certain of the site's legitimacy.
-                                </p>
+                    {/* Additional Security Tips */}
+                    <div className="backdrop-blur-sm bg-white/5 border border-white/20 p-6 rounded-2xl">
+                        <h3 className="text-2xl font-bold mb-6 flex items-center text-white">
+                            <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-teal-500 rounded-lg flex items-center justify-center mr-3">
+                                <Lock className="w-4 h-4 text-white" />
+                            </div>
+                            General Security Tips
+                        </h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="bg-white/10 p-4 rounded-xl">
+                                <div className="flex items-center mb-3">
+                                    <Shield className="w-5 h-5 text-green-400 mr-2" />
+                                    <span className="font-semibold text-green-300">Always verify URLs</span>
+                                </div>
+                                <p className="text-sm text-gray-300">Double-check URLs before clicking, especially in emails or messages</p>
+                            </div>
+                            <div className="bg-white/10 p-4 rounded-xl">
+                                <div className="flex items-center mb-3">
+                                    <Lock className="w-5 h-5 text-blue-400 mr-2" />
+                                    <span className="font-semibold text-blue-300">Look for HTTPS</span>
+                                </div>
+                                <p className="text-sm text-gray-300">Ensure websites use HTTPS encryption, especially for sensitive data</p>
+                            </div>
+                            <div className="bg-white/10 p-4 rounded-xl">
+                                <div className="flex items-center mb-3">
+                                    <Eye className="w-5 h-5 text-purple-400 mr-2" />
+                                    <span className="font-semibold text-purple-300">Check certificates</span>
+                                </div>
+                                <p className="text-sm text-gray-300">Verify SSL certificates for authenticity and validity</p>
+                            </div>
+                            <div className="bg-white/10 p-4 rounded-xl">
+                                <div className="flex items-center mb-3">
+                                    <AlertTriangle className="w-5 h-5 text-orange-400 mr-2" />
+                                    <span className="font-semibold text-orange-300">Trust your instincts</span>
+                                </div>
+                                <p className="text-sm text-gray-300">If something seems suspicious, don't proceed and verify independently</p>
                             </div>
                         </div>
                     </div>
@@ -548,8 +669,28 @@ export default function WebsiteSecurityChecker() {
             )}
         </div>
     </div>
+
+    {/* Footer */}
+    <div className="relative z-10 text-center py-8 px-4">
+        <div className="backdrop-blur-sm bg-white/5 border border-white/20 rounded-2xl p-6 max-w-4xl mx-auto">
+            <div className="flex items-center justify-center mb-4">
+                <Shield className="w-6 h-6 text-orange-400 mr-2" />
+                <span className="text-lg font-semibold text-white">Website Security Checker</span>
+            </div>
+            <p className="text-gray-300 mb-4">
+                Advanced URL analysis combining local pattern recognition, SSL certificate validation, and Google Safe Browsing checks
+            </p>
+            <div className="flex items-center justify-center text-sm text-gray-400">
+                <span>Powered by AI-driven security analysis</span>
+                <span className="mx-2">•</span>
+                <span>Real-time threat detection</span>
+                <span className="mx-2">•</span>
+                <span>Comprehensive reporting</span>
+            </div>
+        </div>
+    </div>
 </div>
 </div>
 </div>
-        );
-    }
+);
+}
