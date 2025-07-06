@@ -109,9 +109,9 @@ export default function WebsiteSecurityChecker() {
                 }
                 
                 // Recalculate risk level based on updated score
-               if (localResults.riskScore >= 6) localResults.riskLevel = 'high';
-               else if (localResults.riskScore >= 32) localResults.riskLevel = 'medium';
-               else localResults.riskLevel = 'low';
+               if (localResults.riskScore >= 8) localResults.riskLevel = 'high';
+               else if (localResults.riskScore >= 4) localResults.riskLevel = 'medium';
+                else localResults.riskLevel = 'low';
 
                 localResults.ssl = {
                     valid: sslResults.certificate?.valid || false,
