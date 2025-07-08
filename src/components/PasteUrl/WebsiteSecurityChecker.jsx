@@ -25,6 +25,7 @@ export default function WebsiteSecurityChecker() {
             // Add timeout and better error handling
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+            console.log("🔍 Sending hostname:", hostname);
 
             const response = await fetch('https://webscarping-x2tm.onrender.com/api/check-ssl', {
                 method: 'POST',
@@ -109,8 +110,8 @@ export default function WebsiteSecurityChecker() {
                 }
                 
                 // Recalculate risk level based on updated score
-               if (localResults.riskScore >= 8) localResults.riskLevel = 'high';
-               else if (localResults.riskScore >= 4) localResults.riskLevel = 'medium';
+               if (localResults.riskScore >= 6) localResults.riskLevel = 'high';
+               else if (localResults.riskScore >= 2) localResults.riskLevel = 'medium';
                 else localResults.riskLevel = 'low';
 
                 localResults.ssl = {

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import emailjs from '@emailjs/browser';
 
 export default function Contact() {
     const [formData, setFormData] = useState({
@@ -12,14 +13,36 @@ export default function Contact() {
         setFormData({
             ...formData,
             [e.target.name]: e.target.value
+            
         });
     };
 
-    const handleSubmit = (e) => {
-        e.preventDefault();
-        // Handle form submission here
-        console.log('Form submitted:', formData);
-    };
+   const handleSubmit = (e) => {
+    e.preventDefault();
+
+   emailjs.send(
+  import.meta.env.VITE_EMAILJS_SERVICE_ID,
+  import.meta.env.VITE_EMAILJS_TEMPLATE_ID,
+  {
+    from_name: formData.name,
+    from_email: formData.email,
+    phone: formData.tel,
+    message: formData.message,
+  },
+  import.meta.env.VITE_EMAILJS_PUBLIC_KEY
+)
+
+
+    .then((result) => {
+        alert("✅ Message sent successfully!");
+        setFormData({ name: '', email: '', tel: '', message: '' });
+    })
+    .catch((error) => {
+        alert("❌ Failed to send message.");
+        console.error(error);
+    });
+};
+
 
     return (
         <div className="relative min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 overflow-hidden">
