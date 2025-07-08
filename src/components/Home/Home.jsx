@@ -45,16 +45,7 @@ export default function Home() {
                                 </div> */}
                                 
                                 {/* Video Caption */}
-                                <div className="absolute bottom-4 left-4 right-4">
-                                    <div className="bg-black/50 backdrop-blur-sm rounded-lg p-3">
-                                        <p className="text-white text-sm font-medium">
-                                            🌍 See EcoTrust in Action
-                                        </p>
-                                        <p className="text-gray-300 text-xs mt-1">
-                                            Watch how we're making the world more sustainable
-                                        </p>
-                                    </div>
-                                </div>
+                                
                             </div>
                             
                             {/* Decorative Elements around Video */}
@@ -119,13 +110,13 @@ export default function Home() {
                             {/* Feature Pills */}
                             <div className="flex flex-wrap justify-center lg:justify-start gap-3">
                                 <span className="px-4 py-2 bg-orange-500/20 text-orange-300 rounded-full text-sm font-medium border border-orange-500/30">
-                                    ✨ Eco-Friendly
+                                    🤖 AI-Powered
                                 </span>
                                 <span className="px-4 py-2 bg-green-500/20 text-green-300 rounded-full text-sm font-medium border border-green-500/30">
-                                    🌱 Sustainable
+                                    🔍 Insightful
                                 </span>
                                 <span className="px-4 py-2 bg-blue-500/20 text-blue-300 rounded-full text-sm font-medium border border-blue-500/30">
-                                    🚀 Innovative
+                                    🔐 Secure
                                 </span>
                             </div>
                         </div>
